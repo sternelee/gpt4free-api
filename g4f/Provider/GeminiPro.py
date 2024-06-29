@@ -11,12 +11,14 @@ from ..errors import MissingAuthError
 from .helper import get_connector
 
 class GeminiPro(AsyncGeneratorProvider, ProviderModelMixin):
+    label = "Gemini API"
     url = "https://ai.google.dev"
     working = True
     supports_message_history = True
     needs_auth = True
-    default_model = "gemini-pro"
-    models = ["gemini-pro", "gemini-pro-vision"]
+    default_model = "gemini-1.5-pro-latest"
+    default_vision_model = default_model
+    models = [default_model, "gemini-pro", "gemini-pro-vision", "gemini-1.5-flash"]
 
     @classmethod
     async def create_async_generator(
@@ -32,11 +34,10 @@ class GeminiPro(AsyncGeneratorProvider, ProviderModelMixin):
         connector: BaseConnector = None,
         **kwargs
     ) -> AsyncResult:
-        model = "gemini-pro-vision" if not model and image is not None else model
         model = cls.get_model(model)
 
         if not api_key:
-            raise MissingAuthError('Missing "api_key"')
+            raise MissingAuthError('Add a "api_key"')
 
         headers = params = None
         if use_auth_header:
@@ -76,7 +77,7 @@ class GeminiPro(AsyncGeneratorProvider, ProviderModelMixin):
                 if not response.ok:
                     data = await response.json()
                     data = data[0] if isinstance(data, list) else data
-                    raise RuntimeError(data["error"]["message"])
+                    raise RuntimeError(f"Response {response.status}: {data['error']['message']}")
                 if stream:
                     lines = []
                     async for chunk in response.content:
@@ -88,7 +89,7 @@ class GeminiPro(AsyncGeneratorProvider, ProviderModelMixin):
                                 data = json.loads(data)
                                 yield data["candidates"][0]["content"]["parts"][0]["text"]
                             except:
-                                data = data.decode() if isinstance(data, bytes) else data
+                                data = data.decode(errors="ignore") if isinstance(data, bytes) else data
                                 raise RuntimeError(f"Read chunk failed: {data}")
                             lines = []
                         else:

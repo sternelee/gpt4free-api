@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+import json
 
 try:
     from platformdirs import user_config_dir
@@ -22,8 +23,18 @@ from .typing import Dict, Cookies
 from .errors import MissingRequirementsError
 from . import debug
 
-# Global variable to store cookies
-_cookies: Dict[str, Cookies] = {}
+class CookiesConfig():
+    cookies: Dict[str, Cookies] = {}
+    cookies_dir: str = "./har_and_cookies"
+
+DOMAINS = [
+    ".bing.com",
+    ".meta.ai",
+    ".google.com",
+    "www.whiterabbitneo.com",
+    "huggingface.co",
+    "chat.reka.ai",
+]
 
 if has_browser_cookie3 and os.environ.get('DBUS_SESSION_BUS_ADDRESS') == "/dev/null":
     _LinuxPasswordManager.get_password = lambda a, b: b"secret"
@@ -38,18 +49,18 @@ def get_cookies(domain_name: str = '', raise_requirements_error: bool = True, si
     Returns:
         Dict[str, str]: A dictionary of cookie names and values.
     """
-    if domain_name in _cookies:
-        return _cookies[domain_name]
+    if domain_name in CookiesConfig.cookies:
+        return CookiesConfig.cookies[domain_name]
 
     cookies = load_cookies_from_browsers(domain_name, raise_requirements_error, single_browser)
-    _cookies[domain_name] = cookies
+    CookiesConfig.cookies[domain_name] = cookies
     return cookies
 
 def set_cookies(domain_name: str, cookies: Cookies = None) -> None:
     if cookies:
-        _cookies[domain_name] = cookies
-    elif domain_name in _cookies:
-        _cookies.pop(domain_name)
+        CookiesConfig.cookies[domain_name] = cookies
+    elif domain_name in CookiesConfig.cookies:
+        CookiesConfig.cookies.pop(domain_name)
 
 def load_cookies_from_browsers(domain_name: str, raise_requirements_error: bool = True, single_browser: bool = False) -> Cookies:
     """
@@ -83,6 +94,77 @@ def load_cookies_from_browsers(domain_name: str, raise_requirements_error: bool 
             if debug.logging:
                 print(f"Error reading cookies from {cookie_fn.__name__} for {domain_name}: {e}")
     return cookies
+
+def set_cookies_dir(dir: str) -> None:
+    CookiesConfig.cookies_dir = dir
+
+def get_cookies_dir() -> str:
+    return CookiesConfig.cookies_dir
+
+def read_cookie_files(dirPath: str = None):
+    def get_domain(v: dict) -> str:
+        host = [h["value"] for h in v['request']['headers'] if h["name"].lower() in ("host", ":authority")]
+        if not host:
+            return
+        host = host.pop()
+        for d in DOMAINS:
+            if d in host:
+                return d
+
+    harFiles = []
+    cookieFiles = []
+    for root, dirs, files in os.walk(CookiesConfig.cookies_dir if dirPath is None else dirPath):
+        for file in files:
+            if file.endswith(".har"):
+                harFiles.append(os.path.join(root, file))
+            elif file.endswith(".json"):
+                cookieFiles.append(os.path.join(root, file))
+
+    CookiesConfig.cookies = {}
+    for path in harFiles:
+        with open(path, 'rb') as file:
+            try:
+                harFile = json.load(file)
+            except json.JSONDecodeError:
+                # Error: not a HAR file!
+                continue
+            if debug.logging:
+                print("Read .har file:", path)
+            new_cookies = {}
+            for v in harFile['log']['entries']:
+                domain = get_domain(v)
+                if domain is None:
+                    continue
+                v_cookies = {}
+                for c in v['request']['cookies']:
+                    v_cookies[c['name']] = c['value']
+                if len(v_cookies) > 0:
+                    CookiesConfig.cookies[domain] = v_cookies
+                    new_cookies[domain] = len(v_cookies)
+            if debug.logging:
+                for domain, new_values in new_cookies.items():
+                    print(f"Cookies added: {new_values} from {domain}")
+    for path in cookieFiles:
+        with open(path, 'rb') as file:
+            try:
+                cookieFile = json.load(file)
+            except json.JSONDecodeError:
+                # Error: not a json file!
+                continue
+            if not isinstance(cookieFile, list):
+                continue
+            if debug.logging:
+                print("Read cookie file:", path)
+            new_cookies = {}
+            for c in cookieFile:
+                if isinstance(c, dict) and "domain" in c:
+                    if c["domain"] not in new_cookies:
+                        new_cookies[c["domain"]] = {}
+                    new_cookies[c["domain"]][c["name"]] = c["value"]
+            for domain, new_values in new_cookies.items():
+                if debug.logging:
+                    print(f"Cookies added: {len(new_values)} from {domain}")
+                CookiesConfig.cookies[domain] = new_values
 
 def _g4f(domain_name: str) -> list:
     """

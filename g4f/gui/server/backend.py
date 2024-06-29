@@ -31,6 +31,10 @@ class Backend_Api(Api):
                 'function': self.get_provider_models,
                 'methods': ['GET']
             },
+            '/backend-api/v2/image_models': {
+                'function': self.get_image_models,
+                'methods': ['GET']
+            },
             '/backend-api/v2/providers': {
                 'function': self.get_providers,
                 'methods': ['GET']
@@ -43,13 +47,13 @@ class Backend_Api(Api):
                 'function': self.handle_conversation,
                 'methods': ['POST']
             },
-            '/backend-api/v2/gen.set.summarize:title': {
-                'function': self.generate_title,
-                'methods': ['POST']
-            },
             '/backend-api/v2/error': {
                 'function': self.handle_error,
                 'methods': ['POST']
+            },
+            '/images/<path:name>': {
+                'function': self.serve_images,
+                'methods': ['GET']
             }
         }
 

@@ -16,6 +16,13 @@ from .errors import MissingRequirementsError
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'}
 
+EXTENSIONS_MAP: dict[str, str] = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+}
+
 def to_image(image: ImageType, is_svg: bool = False) -> Image:
     """
     Converts the input image to a PIL Image object.
@@ -86,7 +93,7 @@ def is_data_uri_an_image(data_uri: str) -> bool:
     if image_format not in ALLOWED_EXTENSIONS and image_format != "svg+xml":
         raise ValueError("Invalid image format (from mime file type).")
 
-def is_accepted_format(binary_data: bytes) -> bool:
+def is_accepted_format(binary_data: bytes) -> str:
     """
     Checks if the given binary data represents an image with an accepted format.
 
@@ -210,7 +217,9 @@ def format_images_markdown(images: Union[str, list], alt: str, preview: Union[st
         if not isinstance(preview, list):
             preview = [preview.replace('{image}', image) if preview else image for image in images]
         result = "\n".join(
-            f"[![#{idx+1} {alt}]({preview[idx]})]({image})" for idx, image in enumerate(images)
+            f"[![#{idx+1} {alt}]({preview[idx]})]({image})"
+            #f'[<img src="{preview[idx]}" width="200" alt="#{idx+1} {alt}">]({image})'
+            for idx, image in enumerate(images)
         )
     start_flag = "<!-- generated images start -->\n"
     end_flag = "<!-- generated images end -->\n"
@@ -239,6 +248,13 @@ def to_bytes(image: ImageType) -> bytes:
     else:
         return image.read()
 
+def to_data_uri(image: ImageType) -> str:
+    if not isinstance(image, str):
+        data = to_bytes(image)
+        data_base64 = base64.b64encode(data).decode()
+        return f"data:{is_accepted_format(data)};base64,{data_base64}"
+    return image
+
 class ImageResponse:
     def __init__(
         self,
@@ -255,6 +271,25 @@ class ImageResponse:
 
     def get(self, key: str):
         return self.options.get(key)
+
+    def get_list(self) -> list[str]:
+        return [self.images] if isinstance(self.images, str) else self.images
+
+class ImagePreview(ImageResponse):
+    def __str__(self):
+        return ""
+
+    def to_string(self):
+        return super().__str__()
+
+class ImageDataResponse():
+    def __init__(
+        self,
+        images: Union[str, list],
+        alt: str,
+    ):
+        self.images = images
+        self.alt = alt
 
     def get_list(self) -> list[str]:
         return [self.images] if isinstance(self.images, str) else self.images
